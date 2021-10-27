@@ -78,13 +78,14 @@ class NektoRoulette():
                                 await self.websocket.send( # прочел типо
                                 '42["action",{"action":"anon.readMessages","dialogId":' + self.dialog_id + ',"lastMessageId":' + str(incomming_message_id) + '}]'
                                 )
+
                                 await self.websocket.send( # пишу типо
                                 '42["action",{"action":"dialog.setTyping","dialogId":' + self.dialog_id + ',"typing":true}]'
                                 )
                                 print(message_text)
 
-                                answer_text = await self.who_to_send_instance.send_message(message_text)
-                                await asyncio.sleep(random.randint(1, 3))
+                                await self.who_to_send_instance.send_message(message_text)
+
                                 await self.websocket.send( # написал типо
                                 '42["action",{"action":"dialog.setTyping","dialogId":' + self.dialog_id + ',"typing":false}]'
                                 )
