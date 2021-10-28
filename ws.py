@@ -30,6 +30,13 @@ class NektoRoulette():
         answer_message = '42["action",{"action":"anon.message","dialogId":'+self.dialog_id+',"message":"' + answer_text + '","randomId":"'+self.get_message_id(self.id_user)+'"}]'
         await self.websocket.send(answer_message)
 
+    async def run(self):
+        try:
+            await self.new_dialog()
+        except (websockets.exceptions.ConnectionClosedError,
+                asyncio.exceptions.IncompleteReadError):
+            pass
+
     async def new_dialog(self):
         async with websockets.connect("wss://im.nekto.me/socket.io/?EIO=3&transport=websocket", ping_timeout=None) as websocket:
             self.websocket = websocket
@@ -118,8 +125,8 @@ async def hello():
 
     await asyncio.gather(
         *(
-            first_nekto_client.new_dialog(), 
-            second_nekto_client.new_dialog()
+            first_nekto_client.run(), 
+            second_nekto_client.run()
         )
     )
 
