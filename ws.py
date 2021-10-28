@@ -91,7 +91,7 @@ class NektoRoulette():
                                 await self.websocket.send( # пишу типо
                                 '42["action",{"action":"dialog.setTyping","dialogId":' + self.dialog_id + ',"typing":true}]'
                                 )
-                                print(f'{self.myid}:{message_text}')
+                                print(f'{self.myid}: {message_text}')
 
                                 await self.who_to_send_instance.send_message(message_text)
 
@@ -112,8 +112,8 @@ class NektoRoulette():
                                             await self.websocket.send(answer_message)
 
 async def hello():
-    first_nekto_client = NektoRoulette('1', "e94eee7259b432d4fccb599a0c1a10aac2b22836ad00dd82e4240af337ce8505")
-    second_nekto_client = NektoRoulette('2', "65191928a660f87a33c460893ac58d21249d19971ebda6e01838eb39a1feeac4", first_nekto_client)
+    first_nekto_client = NektoRoulette('marat', "e94eee7259b432d4fccb599a0c1a10aac2b22836ad00dd82e4240af337ce8505")
+    second_nekto_client = NektoRoulette('softer', "65191928a660f87a33c460893ac58d21249d19971ebda6e01838eb39a1feeac4", first_nekto_client)
     first_nekto_client.who_to_send_instance = second_nekto_client
 
     await asyncio.gather(
