@@ -13,6 +13,7 @@ from aiortc.contrib.signaling import object_to_string
 from aiortc.rtcrtpsender import RTCRtpSender
 from aiortc.rtcconfiguration import RTCConfiguration, RTCIceServer
 from aiortc.sdp import candidate_from_sdp
+from aiortc.contrib.media import MediaPlayer, MediaRecorder
 
 logger = logging.getLogger('HumioDemoLogger')
 
@@ -41,7 +42,6 @@ class NektoRoulette():
         audio, _ = create_local_tracks(
             "https://cdn.discordapp.com/attachments/447377030938361867/1032360514216525874/0-3011776416361.mp4", decode=True
         )
-
         async with websockets.connect("wss://audio.nekto.me/websocket/?EIO=3&transport=websocket", ping_timeout=None) as websocket:
             async def pinger():
                 try:
@@ -64,7 +64,7 @@ class NektoRoulette():
             asyncio.create_task(pinger())
 
             await websocket.send('42["event",{"type":"scan-for-peer","peerToPeer":true,"searchCriteria":{"peerSex":"ANY","group":0,"userSex":"ANY"},"token":null}]')
-
+            recorder = MediaRecorder("test.mp3")
             while websocket.open:
                 resp = await websocket.recv()
 
@@ -106,7 +106,17 @@ class NektoRoulette():
                         async def on_connectionstatechange():
                             print("Connection state is %s" % pc.signalingState)
 
+                        @pc.on("track")
+                        async def on_track(track):
+                            print("Track %s received" % track.kind)
+                            #if track.kind == "video":
+                            #    recorder.addTrack(track)
+                            if track.kind == "audio":
+                                recorder.addTrack(track)
+                                await recorder.start()
+
                         pc.addTrack(audio)
+
                         if initiator:
                             print("Init")
                             # generate offer
@@ -162,6 +172,7 @@ class NektoRoulette():
                         break
                 
                 print(content)
+
 
 def create_local_tracks(play_from, decode):
     global relay, webcam
