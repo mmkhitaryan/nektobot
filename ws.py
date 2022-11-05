@@ -99,6 +99,8 @@ class NektoRoulette():
                             print("Connection state is %s" % pc.connectionState)
                             if pc.connectionState == "failed":
                                 await pc.close()
+                            if pc.connectionState == "connected":
+                                await websocket.send('42["event",{"type":"peer-connection","connection":true,"connectionId":"'+connectionId+'"}]')
                         
                         @pc.on("icegatheringstatechange")
                         async def on_connectionstatechange():
@@ -156,6 +158,8 @@ class NektoRoulette():
 
                         await pc.addIceCandidate(candidate)
 
+                    if message_type=="peer-disconnect":
+                        break
                 
                 print(content)
 
