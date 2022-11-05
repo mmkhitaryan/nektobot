@@ -135,10 +135,10 @@ class NektoRoulette():
                                     candidate_jsoned = json.loads(object_to_string(candidate))
                                     candidate_jsoned['sdpMid'] = "0"
                                     candidate_jsoned['sdpMLineIndex'] = 0
-                                    candidate_with_additionals_stringed = json.dumps(candidate_jsoned)
-
+                                    candidate_with_additionals_stringed = json.dumps({"candidate":candidate_jsoned})
+                                                                             # candidate should be full string
                                     ice_candidate = '42["event",'+json.dumps({"candidate": candidate_with_additionals_stringed, "connectionId": connectionId, "type":"ice-candidate"})+']'
-                                    print(ice_candidate)
+
                                     await websocket.send(ice_candidate)
                         # after webrtc connection
                         # 42["event",{"type":"stream-received","connectionId":"383914732"}]
@@ -148,8 +148,16 @@ class NektoRoulette():
 
                     # 42["event",{"type":"peer-disconnect","connectionId":"383914732"}]
                     if message_type=="ice-candidate":
-                        self.ice_candidate = content["candidate"]
-                    
+                        candidate = candidate_from_sdp(json.loads(content['candidate'])['candidate']['candidate'])
+
+                        info = json.loads(content['candidate'])['candidate']
+                        candidate.sdpMid = info['sdpMid']
+                        candidate.sdpMLineIndex = info['sdpMLineIndex']
+
+                        await pc.addIceCandidate(candidate)
+
+                
+                print(content)
 
 def create_local_tracks(play_from, decode):
     global relay, webcam
