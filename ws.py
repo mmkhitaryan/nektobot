@@ -81,7 +81,6 @@ class NektoRoulette():
                         initiator = content["initiator"]
                         connectionId = content["connectionId"]
 
-                        stun_url = content['stunUrl']
                         turn_data = json.loads(content['turnParams'])
 
                         pc = RTCPeerConnection(
