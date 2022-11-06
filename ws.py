@@ -204,24 +204,8 @@ class NektoRoulette():
 def create_local_tracks(play_from, decode):
     global relay, webcam
 
-    if play_from:
-        player = MediaPlayer(play_from, decode=decode)
-        return player.audio, player.video
-    else:
-        options = {"framerate": "30", "video_size": "640x480"}
-        if relay is None:
-            if platform.system() == "Darwin":
-                webcam = MediaPlayer(
-                    "default:none", format="avfoundation", options=options
-                )
-            elif platform.system() == "Windows":
-                webcam = MediaPlayer(
-                    "video=Integrated Camera", format="dshow", options=options
-                )
-            else:
-                webcam = MediaPlayer("/dev/video0", format="v4l2", options=options)
-            relay = MediaRelay()
-        return None, relay.subscribe(webcam.video)
+    player = MediaPlayer(play_from, decode=decode)
+    return player.audio, player.video
 
 async def hello():
     first_nekto_client = NektoRoulette('marat', "6a7ef640-2369-4992-b249-173587930ab0")
