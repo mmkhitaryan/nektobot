@@ -40,7 +40,7 @@ class NektoRoulette():
 
     async def run(self):
         audio, _ = create_local_tracks(
-            "https://zvukogram.com/index.php?r=site/download&id=44558", decode=True
+            "https://zvukogram.com/index.php?r=site/download&id=44560", decode=True
         )
         async with websockets.connect("wss://audio.nekto.me/websocket/?EIO=3&transport=websocket", ping_timeout=None) as websocket:
             async def pinger():
@@ -195,6 +195,9 @@ class NektoRoulette():
 
                     if message_type=="peer-disconnect":
                         await recorder.stop()
+                        await pc.close()
+                        await websocket.close()
+                        await websocket.wait_closed()
                         break
 
 
