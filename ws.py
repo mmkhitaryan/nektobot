@@ -40,7 +40,7 @@ class NektoRoulette():
 
     async def run(self):
         audio, _ = create_local_tracks(
-            "https://cdn.discordapp.com/attachments/447377030938361867/1032360514216525874/0-3011776416361.mp4", decode=True
+            "https://zvukogram.com/index.php?r=site/download&id=44558", decode=True
         )
         async with websockets.connect("wss://audio.nekto.me/websocket/?EIO=3&transport=websocket", ping_timeout=None) as websocket:
             async def pinger():
@@ -71,7 +71,7 @@ class NektoRoulette():
                 if resp[0:2] == "42":
                     resp_json = json.loads(resp[2:])
                     content = resp_json[1]
-
+                    print(content)
 
                     message_type = content["type"]
                     if message_type=="search.success":
@@ -83,7 +83,7 @@ class NektoRoulette():
 
                         stun_url = content['stunUrl']
                         turn_data = json.loads(content['turnParams'])
-                        # TODO: set stun/turn settings username and password
+
                         pc = RTCPeerConnection(
                             RTCConfiguration(iceServers=[
                                 RTCIceServer(
@@ -114,12 +114,12 @@ class NektoRoulette():
                             if track.kind == "audio":
                                 recorder.addTrack(track)
                                 await recorder.start()
-
-                        pc.addTrack(audio)
+                                await websocket.send('42["event",{"type":"stream-received","connectionId":"'+connectionId+'"}]')
 
                         if initiator:
-                            print("Init")
+                            print(f"Init is_init {initiator}")
                             # generate offer
+                            pc.addTrack(audio)
                             offer = await pc.createOffer()
                             sdp_offer = json.dumps({"sdp":offer.sdp, "type": offer.type}) # json to string if json aiortc returns object
                             await pc.setLocalDescription(offer)
@@ -130,8 +130,39 @@ class NektoRoulette():
 
                         if not initiator:
                             # just wait for offer, and answer to it
-                            await websocket.send('42["event",{"type":"peer-disconnect","connectionId":"'+connectionId+'"}]')
-                            break
+                            pass
+
+                    if message_type=="offer":
+                        if not initiator:
+                            remote_offer = RTCSessionDescription(sdp=json.loads(content["offer"])["sdp"], type=json.loads(content["offer"])["type"])
+                            await pc.setRemoteDescription(remote_offer)
+
+                            pc.addTrack(audio)
+                            
+                            localAnswer = await pc.createAnswer()
+                            await pc.setLocalDescription(localAnswer)
+
+
+                            sdp_offer = json.dumps({"sdp":localAnswer.sdp, "type": localAnswer.type}) 
+
+                            offer_msg = '42["event",'+json.dumps({"type":"answer","connectionId":connectionId,"answer":sdp_offer})+']'
+                            print(offer_msg)
+                            await websocket.send(offer_msg)
+                            print("offer"+offer_msg)
+
+                            for transceiver in pc.getTransceivers():
+                                iceGatherer = transceiver.sender.transport.transport.iceGatherer
+                                for candidate in iceGatherer.getLocalCandidates():
+                                    candidate.sdpMid = transceiver.mid
+
+                                    candidate_jsoned = json.loads(object_to_string(candidate))
+                                    candidate_jsoned['sdpMid'] = "0"
+                                    candidate_jsoned['sdpMLineIndex'] = 0
+                                    candidate_with_additionals_stringed = json.dumps({"candidate":candidate_jsoned})
+                                                                             # candidate should be full string
+                                    ice_candidate = '42["event",'+json.dumps({"candidate": candidate_with_additionals_stringed, "connectionId": connectionId, "type":"ice-candidate"})+']'
+
+                                    await websocket.send(ice_candidate)
 
                     if message_type=="answer":
                         if initiator:
@@ -143,7 +174,6 @@ class NektoRoulette():
                                 for candidate in iceGatherer.getLocalCandidates():
                                     candidate.sdpMid = transceiver.mid
 
-                                   #                 42["event",{"type":"ice-candidate","connectionId":"                ","candidate":"{\"candidate\":{\"candidate\":\"candidate:3515631507 1 udp 41819903 95.217.200.121 58261 typ relay raddr 0.0.0.0 rport 0 generation 0 ufrag Op7o network-id 1 network-cost 10\",\"sdpMid\":\"0\",\"sdpMLineIndex\":0}}"}]
                                     candidate_jsoned = json.loads(object_to_string(candidate))
                                     candidate_jsoned['sdpMid'] = "0"
                                     candidate_jsoned['sdpMLineIndex'] = 0
@@ -152,11 +182,6 @@ class NektoRoulette():
                                     ice_candidate = '42["event",'+json.dumps({"candidate": candidate_with_additionals_stringed, "connectionId": connectionId, "type":"ice-candidate"})+']'
 
                                     await websocket.send(ice_candidate)
-                        # after webrtc connection
-                        # 42["event",{"type":"stream-received","connectionId":"383914732"}]
-
-                        # 42["event",{"type":"peer-disconnect","connectionId":"383914732"}]	
-
 
                     # 42["event",{"type":"peer-disconnect","connectionId":"383914732"}]
                     if message_type=="ice-candidate":
@@ -169,9 +194,8 @@ class NektoRoulette():
                         await pc.addIceCandidate(candidate)
 
                     if message_type=="peer-disconnect":
+                        await recorder.stop()
                         break
-                
-                print(content)
 
 
 def create_local_tracks(play_from, decode):
