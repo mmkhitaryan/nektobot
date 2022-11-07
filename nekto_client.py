@@ -19,6 +19,7 @@ logger = logging.getLogger('HumioDemoLogger')
 
 logger.setLevel(logging.DEBUG)
 
+relay = MediaRelay()
 
 class NektoRoulette():
     def __init__(self, myid, token) -> None:
