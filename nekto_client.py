@@ -14,12 +14,24 @@ from aiortc.rtcrtpsender import RTCRtpSender
 from aiortc.rtcconfiguration import RTCConfiguration, RTCIceServer
 from aiortc.sdp import candidate_from_sdp
 from aiortc.contrib.media import MediaPlayer, MediaRecorder
+from aiortc.mediastreams import AUDIO_PTIME, MediaStreamError, MediaStreamTrack
+import bot
 
 logger = logging.getLogger('HumioDemoLogger')
 
 logger.setLevel(logging.DEBUG)
 
-relay = MediaRelay()
+
+async def custom_run_track(track):
+    while True:
+        try:
+            frame = await track.recv()
+            for plane in frame.planes:
+                packet = plane.to_bytes()
+                bot.voice_client.send_audio_packet(packet)
+        except MediaStreamError:
+            return
+
 
 class NektoRoulette():
     def __init__(self, myid, token) -> None:
@@ -41,7 +53,7 @@ class NektoRoulette():
 
     async def run(self):
         audio, _ = create_local_tracks(
-            "https://zvukogram.com/index.php?r=site/download&id=44560", decode=True
+            "https://zvukogram.com/index.php?r=site/download&id=44559", decode=True
         )
         async with websockets.connect("wss://audio.nekto.me/websocket/?EIO=3&transport=websocket", ping_timeout=None) as websocket:
             async def pinger():
@@ -66,6 +78,7 @@ class NektoRoulette():
 
             await websocket.send('42["event",{"type":"scan-for-peer","peerToPeer":true,"searchCriteria":{"peerSex":"ANY","group":0,"userSex":"ANY"},"token":null}]')
             recorder = MediaRecorder("test.mp3")
+
             while websocket.open:
                 resp = await websocket.recv()
 
@@ -112,8 +125,9 @@ class NektoRoulette():
                             #if track.kind == "video":
                             #    recorder.addTrack(track)
                             if track.kind == "audio":
-                                recorder.addTrack(track)
-                                await recorder.start()
+
+                                asyncio.create_task(custom_run_track(track))
+
                                 await websocket.send('42["event",{"type":"stream-received","connectionId":"'+connectionId+'"}]')
 
                         if initiator:
@@ -207,10 +221,15 @@ def create_local_tracks(play_from, decode):
     player = MediaPlayer(play_from, decode=decode)
     return player.audio, player.video
 
+async def test():
+    bot_task = bot.client.start('OTc5NjQ2MTc1MDU5ODA0MTkw.G_m_JZ._zlvvVhs044d_a_yR4n1hRE2O_g99-LjrwpmN8')
+    asyncio.create_task(bot_task)
+
 async def hello():
+    asyncio.create_task(test())
+    await asyncio.sleep(5)
     first_nekto_client = NektoRoulette('marat', "6a7ef640-2369-4992-b249-173587930ab0")
 
-    
     await first_nekto_client.run()
 
 if __name__ == '__main__':
