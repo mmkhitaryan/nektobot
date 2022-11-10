@@ -6,29 +6,77 @@ import websockets
 import time
 import random
 import logging
+import fractions
 
 from aiortc import RTCPeerConnection, RTCSessionDescription
-from aiortc.contrib.media import MediaPlayer, MediaRelay
+from aiortc.contrib.media import MediaPlayer, MediaRelay, PlayerStreamTrack, AudioStream
 from aiortc.contrib.signaling import object_to_string
 from aiortc.rtcrtpsender import RTCRtpSender
 from aiortc.rtcconfiguration import RTCConfiguration, RTCIceServer
 from aiortc.sdp import candidate_from_sdp
 from aiortc.contrib.media import MediaPlayer, MediaRecorder
-from aiortc.mediastreams import AUDIO_PTIME, MediaStreamError, MediaStreamTrack
-import bot
+from aiortc.mediastreams import AUDIO_PTIME, MediaStreamError, AudioStreamTrack
+from aiortc.codecs.opus import OpusEncoder, SAMPLES_PER_FRAME, TIME_BASE, SAMPLE_RATE
+from aiortc.codecs._opus import ffi, lib
+
+from av import AudioFrame, AudioResampler
+import av
 
 logger = logging.getLogger('HumioDemoLogger')
 
 logger.setLevel(logging.DEBUG)
 
+frame_queue = asyncio.Queue()
+opus_stream_file = open('test.opus', 'wb')
+
+class CustomAudioStreamTrack(AudioStreamTrack):
+    _timestamp = 0
+    async def recv(self):
+        global frame_queue
+
+        print("fasdf7a7dsyfa8s")
+
+        raw_data = await frame_queue.get()
+
+        print("frame creating")
+        opus_stream_file.write(raw_data)
+
+        frame = AudioFrame(format="s16", layout="stereo", samples=SAMPLES_PER_FRAME)
+        print("instance created")
+
+        try:
+            frame.planes[0].update(raw_data)
+            print("plane set")
+        except Exception as e:
+            print(e)
+
+        frame.pts = self._timestamp
+        self._timestamp += SAMPLES_PER_FRAME
+        print(self._timestamp)
+
+        print("timestamp set")
+        frame.sample_rate = SAMPLE_RATE
+        print("SAMPLE_RATE set")
+        frame.time_base = TIME_BASE
+        print("TIME_BASE set")
+
+        print("FRAME SENT")
+
+        frame_queue.task_done()
+        return frame
+
+voice_client = None
+discord_stream = CustomAudioStreamTrack()
 
 async def custom_run_track(track):
+    global voice_client
+
     while True:
         try:
             frame = await track.recv()
             for plane in frame.planes:
-                packet = plane.to_bytes()
-                bot.voice_client.send_audio_packet(packet)
+                packet = bytes(plane)
+                voice_client.send_audio_packet(packet)
         except MediaStreamError:
             return
 
@@ -52,9 +100,8 @@ class NektoRoulette():
         await self.websocket.send(answer_message)
 
     async def run(self):
-        audio, _ = create_local_tracks(
-            "https://zvukogram.com/index.php?r=site/download&id=44559", decode=True
-        )
+        assert voice_client != None
+        print("start run")
         async with websockets.connect("wss://audio.nekto.me/websocket/?EIO=3&transport=websocket", ping_timeout=None) as websocket:
             async def pinger():
                 try:
@@ -77,7 +124,6 @@ class NektoRoulette():
             asyncio.create_task(pinger())
 
             await websocket.send('42["event",{"type":"scan-for-peer","peerToPeer":true,"searchCriteria":{"peerSex":"ANY","group":0,"userSex":"ANY"},"token":null}]')
-            recorder = MediaRecorder("test.mp3")
 
             while websocket.open:
                 resp = await websocket.recv()
@@ -85,7 +131,6 @@ class NektoRoulette():
                 if resp[0:2] == "42":
                     resp_json = json.loads(resp[2:])
                     content = resp_json[1]
-                    print(content)
 
                     message_type = content["type"]
                     if message_type=="search.success":
@@ -109,19 +154,13 @@ class NektoRoulette():
                         )
                         @pc.on("connectionstatechange")
                         async def on_connectionstatechange():
-                            print("Connection state is %s" % pc.connectionState)
                             if pc.connectionState == "failed":
                                 await pc.close()
                             if pc.connectionState == "connected":
                                 await websocket.send('42["event",{"type":"peer-connection","connection":true,"connectionId":"'+connectionId+'"}]')
                         
-                        @pc.on("icegatheringstatechange")
-                        async def on_connectionstatechange():
-                            print("Connection state is %s" % pc.signalingState)
-
                         @pc.on("track")
                         async def on_track(track):
-                            print("Track %s received" % track.kind)
                             #if track.kind == "video":
                             #    recorder.addTrack(track)
                             if track.kind == "audio":
@@ -131,16 +170,14 @@ class NektoRoulette():
                                 await websocket.send('42["event",{"type":"stream-received","connectionId":"'+connectionId+'"}]')
 
                         if initiator:
-                            print(f"Init is_init {initiator}")
                             # generate offer
-                            pc.addTrack(audio)
+                            pc.addTrack(discord_stream)
                             offer = await pc.createOffer()
                             sdp_offer = json.dumps({"sdp":offer.sdp, "type": offer.type}) # json to string if json aiortc returns object
                             await pc.setLocalDescription(offer)
                             await websocket.send('42["event",{"type":"peer-mute","connectionId":"'+connectionId+'","muted":false}]')
                             offer_msg = '42["event",'+json.dumps({"type":"offer","connectionId":connectionId,"offer":sdp_offer})+']'
                             await websocket.send(offer_msg)
-                            print("offer"+offer_msg)
 
                         if not initiator:
                             # just wait for offer, and answer to it
@@ -151,7 +188,7 @@ class NektoRoulette():
                             remote_offer = RTCSessionDescription(sdp=json.loads(content["offer"])["sdp"], type=json.loads(content["offer"])["type"])
                             await pc.setRemoteDescription(remote_offer)
 
-                            pc.addTrack(audio)
+                            pc.addTrack(discord_stream)
                             
                             localAnswer = await pc.createAnswer()
                             await pc.setLocalDescription(localAnswer)
@@ -160,9 +197,9 @@ class NektoRoulette():
                             sdp_offer = json.dumps({"sdp":localAnswer.sdp, "type": localAnswer.type}) 
 
                             offer_msg = '42["event",'+json.dumps({"type":"answer","connectionId":connectionId,"answer":sdp_offer})+']'
-                            print(offer_msg)
+
                             await websocket.send(offer_msg)
-                            print("offer"+offer_msg)
+
 
                             for transceiver in pc.getTransceivers():
                                 iceGatherer = transceiver.sender.transport.transport.iceGatherer
@@ -208,29 +245,8 @@ class NektoRoulette():
                         await pc.addIceCandidate(candidate)
 
                     if message_type=="peer-disconnect":
-                        await recorder.stop()
                         await pc.close()
                         await websocket.close()
                         await websocket.wait_closed()
+                        print("Left")
                         break
-
-
-def create_local_tracks(play_from, decode):
-    global relay, webcam
-
-    player = MediaPlayer(play_from, decode=decode)
-    return player.audio, player.video
-
-async def test():
-    bot_task = bot.client.start('OTc5NjQ2MTc1MDU5ODA0MTkw.G_m_JZ._zlvvVhs044d_a_yR4n1hRE2O_g99-LjrwpmN8')
-    asyncio.create_task(bot_task)
-
-async def hello():
-    asyncio.create_task(test())
-    await asyncio.sleep(5)
-    first_nekto_client = NektoRoulette('marat', "6a7ef640-2369-4992-b249-173587930ab0")
-
-    await first_nekto_client.run()
-
-if __name__ == '__main__':
-    asyncio.run(hello())
