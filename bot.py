@@ -1,9 +1,8 @@
+import uvloop
 import discord
-import asyncio
 
-from discord.sinks import Sink, Filters
+from discord.sinks import Sink
 import nekto_client
-from aiortc.codecs.opus import OpusDecoder
 
 bot = discord.Bot()
 
@@ -43,4 +42,5 @@ async def start(ctx: discord.ApplicationContext):
     voice_client.stop_recording()
     await voice_client.disconnect()
 
+uvloop.install()
 bot.run('OTc5NjQ2MTc1MDU5ODA0MTkw.G_m_JZ._zlvvVhs044d_a_yR4n1hRE2O_g99-LjrwpmN8')

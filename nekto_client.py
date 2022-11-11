@@ -4,22 +4,17 @@ import json
 import asyncio
 import websockets
 import time
-import random
 import logging
-import fractions
 
 from aiortc import RTCPeerConnection, RTCSessionDescription
-from aiortc.contrib.media import MediaPlayer, MediaRelay, PlayerStreamTrack, AudioStream
 from aiortc.contrib.signaling import object_to_string
-from aiortc.rtcrtpsender import RTCRtpSender
 from aiortc.rtcconfiguration import RTCConfiguration, RTCIceServer
 from aiortc.sdp import candidate_from_sdp
-from aiortc.contrib.media import MediaPlayer, MediaRecorder
+from aiortc.contrib.media import MediaPlayer
 from aiortc.mediastreams import AUDIO_PTIME, MediaStreamError, AudioStreamTrack
-from aiortc.codecs.opus import OpusEncoder, SAMPLES_PER_FRAME, TIME_BASE, SAMPLE_RATE
-from aiortc.codecs._opus import ffi, lib
+from aiortc.codecs.opus import SAMPLES_PER_FRAME, TIME_BASE, SAMPLE_RATE
 
-from av import AudioFrame, AudioResampler
+from av import AudioFrame
 import av
 
 logger = logging.getLogger('HumioDemoLogger')
