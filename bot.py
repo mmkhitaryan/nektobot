@@ -37,8 +37,8 @@ async def start(ctx: discord.ApplicationContext):
         ctx.channel,
     )
 
-    await nekto_client_instance.run()
     await ctx.respond("Conversation started")
+    await nekto_client_instance.run()
 
     voice_client.stop_recording()
 
