@@ -41,5 +41,6 @@ async def start(ctx: discord.ApplicationContext):
     await nekto_client_instance.run()
 
     voice_client.stop_recording()
+    await voice_client.disconnect()
 
 bot.run('OTc5NjQ2MTc1MDU5ODA0MTkw.G_m_JZ._zlvvVhs044d_a_yR4n1hRE2O_g99-LjrwpmN8')
