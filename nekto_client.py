@@ -27,7 +27,6 @@ logger = logging.getLogger('HumioDemoLogger')
 logger.setLevel(logging.DEBUG)
 
 frame_queue = asyncio.Queue()
-opus_stream_file = open('test.opus', 'wb')
 
 class CustomAudioStreamTrack(AudioStreamTrack):
     _timestamp = 0
@@ -39,7 +38,6 @@ class CustomAudioStreamTrack(AudioStreamTrack):
         raw_data = await frame_queue.get()
 
         print("frame creating")
-        opus_stream_file.write(raw_data)
 
         frame = AudioFrame(format="s16", layout="stereo", samples=SAMPLES_PER_FRAME)
         print("instance created")
