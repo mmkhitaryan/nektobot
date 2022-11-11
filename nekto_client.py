@@ -33,32 +33,22 @@ class CustomAudioStreamTrack(AudioStreamTrack):
     async def recv(self):
         global frame_queue
 
-        print("fasdf7a7dsyfa8s")
 
         raw_data = await frame_queue.get()
 
-        print("frame creating")
-
         frame = AudioFrame(format="s16", layout="stereo", samples=SAMPLES_PER_FRAME)
-        print("instance created")
 
         try:
+            # TODO: why stops when no try except?/
             frame.planes[0].update(raw_data)
-            print("plane set")
         except Exception as e:
             print(e)
 
         frame.pts = self._timestamp
         self._timestamp += SAMPLES_PER_FRAME
-        print(self._timestamp)
-
-        print("timestamp set")
         frame.sample_rate = SAMPLE_RATE
-        print("SAMPLE_RATE set")
         frame.time_base = TIME_BASE
-        print("TIME_BASE set")
 
-        print("FRAME SENT")
 
         frame_queue.task_done()
         return frame
