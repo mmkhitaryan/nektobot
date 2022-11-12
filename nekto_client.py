@@ -5,6 +5,7 @@ import asyncio
 import websockets
 import time
 import logging
+import sys
 
 from aiortc import RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.signaling import object_to_string
@@ -15,38 +16,48 @@ from aiortc.mediastreams import AUDIO_PTIME, MediaStreamError, AudioStreamTrack
 from aiortc.codecs.opus import SAMPLES_PER_FRAME, TIME_BASE, SAMPLE_RATE
 
 from av import AudioFrame
-import av
+import os
 
-logger = logging.getLogger('HumioDemoLogger')
+DEBUG = os.environ.get('KEY_THAT_MIGHT_EXIST')
 
-logger.setLevel(logging.DEBUG)
+if DEBUG:
+    logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
 frame_queue = asyncio.Queue()
 
 class CustomAudioStreamTrack(AudioStreamTrack):
     _timestamp = 0
+    
     async def recv(self):
         global frame_queue
 
-
         raw_data = await frame_queue.get()
-
         frame = AudioFrame(format="s16", layout="stereo", samples=SAMPLES_PER_FRAME)
+        
+        p = frame.planes[0]
 
-        try:
-            # TODO: why stops when no try except?/
-            frame.planes[0].update(raw_data)
-        except Exception as e:
-            print(e)
+        if len(raw_data) == 3840:
+            if raw_data != None:
+                p.update(raw_data)
 
-        frame.pts = self._timestamp
-        self._timestamp += SAMPLES_PER_FRAME
-        frame.sample_rate = SAMPLE_RATE
-        frame.time_base = TIME_BASE
+                frame.pts = self._timestamp
+                self._timestamp += SAMPLES_PER_FRAME
+                frame.sample_rate = SAMPLE_RATE
+                frame.time_base = TIME_BASE
+                
+                frame_queue.task_done()
+                return frame
+        else:
+            print("PACKET IS TOO LARGE:"+str(len(raw_data)))
+            p.update(bytes(p.buffer_size))
+            frame.pts = self._timestamp
+            self._timestamp += SAMPLES_PER_FRAME
+            frame.sample_rate = SAMPLE_RATE
+            frame.time_base = TIME_BASE
 
-
-        frame_queue.task_done()
-        return frame
+            frame_queue.task_done()
+            return frame
+        
 
 voice_client = None
 discord_stream = CustomAudioStreamTrack()
