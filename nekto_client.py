@@ -54,8 +54,6 @@ class CustomAudioStreamTrack(AudioStreamTrack):
 
             self.frame_queue.task_done()
             return frame
-        
-
 
 async def custom_run_track(track, voice_client):
     while True:
@@ -240,3 +238,8 @@ class NektoRoulette():
                         await websocket.wait_closed()
                         print("Left")
                         break
+
+                    if message_type=="captcha-request":
+                        await websocket.close()
+                        await websocket.wait_closed()
+                        raise Exception("Captcha:"+self.token)

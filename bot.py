@@ -11,11 +11,34 @@ nekto_instances = {
 }
 
 class MySubClassedSink(Sink):
+    frames_buffer = []
+
+    def send_all_frames(self):
+        unique_speakers_in_buffer = len(
+            set([user_id for user_id,_ in self.frames_buffer])
+        )
+
+        if unique_speakers_in_buffer==1:
+            for _,raw_frame in self.frames_buffer:
+                nekto_instances[self.vc.channel.id].frame_queue.put_nowait(raw_frame)
+        else:
+            print("multiple detected")
+        
+        self.frames_buffer.clear()
+
     def write(self, data, user):
-        nekto_instances[self.vc.channel.id].frame_queue.put_nowait(data)
+        if len(data)!=3840:
+            print("packet too big!")
+        if len(self.frames_buffer)<=5: # flush periodically
+            self.frames_buffer.append((user, data))
+            self.send_all_frames()
+
 
 def finished_callback(*args):
     print(args)
+
+def custom_recv_decoded_audio(self, data):
+    self.sink.write(data.decoded_data, self.ws.ssrc_map[data.ssrc]["user_id"])
 
 @bot.command()
 async def start(ctx: discord.ApplicationContext):
@@ -27,9 +50,9 @@ async def start(ctx: discord.ApplicationContext):
         return await ctx.respond("You're not in a vc right now")
 
     voice_client = await voice.channel.connect()
+    discord.voice_client.VoiceClient.recv_decoded_audio = custom_recv_decoded_audio
 
     nekto_client_instance.voice_client = voice_client
-
     custom_sink = MySubClassedSink()
 
     nekto_instances[ctx.author.voice.channel.id]=nekto_client_instance
