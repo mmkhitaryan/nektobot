@@ -18,20 +18,17 @@ from aiortc.codecs.opus import SAMPLES_PER_FRAME, TIME_BASE, SAMPLE_RATE
 from av import AudioFrame
 import os
 
-DEBUG = os.environ.get('KEY_THAT_MIGHT_EXIST')
+DEBUG = os.environ.get('DEBUG')
 
 if DEBUG:
     logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
-frame_queue = asyncio.Queue()
 
 class CustomAudioStreamTrack(AudioStreamTrack):
     _timestamp = 0
     
     async def recv(self):
-        global frame_queue
-
-        raw_data = await frame_queue.get()
+        raw_data = await self.frame_queue.get()
         frame = AudioFrame(format="s16", layout="stereo", samples=SAMPLES_PER_FRAME)
         
         p = frame.planes[0]
@@ -45,7 +42,7 @@ class CustomAudioStreamTrack(AudioStreamTrack):
                 frame.sample_rate = SAMPLE_RATE
                 frame.time_base = TIME_BASE
                 
-                frame_queue.task_done()
+                self.frame_queue.task_done()
                 return frame
         else:
             print("PACKET IS TOO LARGE:"+str(len(raw_data)))
@@ -55,16 +52,12 @@ class CustomAudioStreamTrack(AudioStreamTrack):
             frame.sample_rate = SAMPLE_RATE
             frame.time_base = TIME_BASE
 
-            frame_queue.task_done()
+            self.frame_queue.task_done()
             return frame
         
 
-voice_client = None
-discord_stream = CustomAudioStreamTrack()
 
-async def custom_run_track(track):
-    global voice_client
-
+async def custom_run_track(track, voice_client):
     while True:
         try:
             frame = await track.recv()
@@ -79,6 +72,10 @@ class NektoRoulette():
     def __init__(self, myid, token) -> None:
         self.token=token
         self.myid=myid
+        self.discord_stream = CustomAudioStreamTrack()
+        self.frame_queue = asyncio.Queue()
+        self.discord_stream.frame_queue = self.frame_queue
+        self.voice_client = None
 
     def get_message_id(self, user_id):
         getTime = int(time.time()*1000)
@@ -94,7 +91,7 @@ class NektoRoulette():
         await self.websocket.send(answer_message)
 
     async def run(self):
-        assert voice_client != None
+        assert self.voice_client != None
         print("start run")
         async with websockets.connect("wss://audio.nekto.me/websocket/?EIO=3&transport=websocket", ping_timeout=None) as websocket:
             async def pinger():
@@ -158,14 +155,14 @@ class NektoRoulette():
                             #if track.kind == "video":
                             #    recorder.addTrack(track)
                             if track.kind == "audio":
-
-                                asyncio.create_task(custom_run_track(track))
+                                assert self.voice_client != None
+                                asyncio.create_task(custom_run_track(track, self.voice_client))
 
                                 await websocket.send('42["event",{"type":"stream-received","connectionId":"'+connectionId+'"}]')
 
                         if initiator:
                             # generate offer
-                            pc.addTrack(discord_stream)
+                            pc.addTrack(self.discord_stream)
                             offer = await pc.createOffer()
                             sdp_offer = json.dumps({"sdp":offer.sdp, "type": offer.type}) # json to string if json aiortc returns object
                             await pc.setLocalDescription(offer)
@@ -182,7 +179,7 @@ class NektoRoulette():
                             remote_offer = RTCSessionDescription(sdp=json.loads(content["offer"])["sdp"], type=json.loads(content["offer"])["type"])
                             await pc.setRemoteDescription(remote_offer)
 
-                            pc.addTrack(discord_stream)
+                            pc.addTrack(self.discord_stream)
                             
                             localAnswer = await pc.createAnswer()
                             await pc.setLocalDescription(localAnswer)

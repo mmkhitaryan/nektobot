@@ -6,9 +6,13 @@ import nekto_client
 
 bot = discord.Bot()
 
+nekto_instances = {
+
+}
+
 class MySubClassedSink(Sink):
     def write(self, data, user):
-        nekto_client.frame_queue.put_nowait(data)
+        nekto_instances[self.vc.channel.id].frame_queue.put_nowait(data)
 
 def finished_callback(*args):
     print(args)
@@ -23,19 +27,18 @@ async def start(ctx: discord.ApplicationContext):
         return await ctx.respond("You're not in a vc right now")
 
     voice_client = await voice.channel.connect()
-    from discord.opus import Encoder
-    voice_client.encoder = Encoder()
 
-    nekto_client.voice_client = voice_client
+    nekto_client_instance.voice_client = voice_client
 
     custom_sink = MySubClassedSink()
+
+    nekto_instances[ctx.author.voice.channel.id]=nekto_client_instance
 
     voice_client.start_recording(
         custom_sink,
         finished_callback,
         ctx.channel,
     )
-
     await ctx.respond("Conversation started")
     await nekto_client_instance.run()
 
