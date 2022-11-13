@@ -18,7 +18,7 @@ from aiortc.codecs.opus import SAMPLES_PER_FRAME, TIME_BASE, SAMPLE_RATE
 from av import AudioFrame
 import os
 
-DEBUG = os.environ.get('DEBUG')
+DEBUG = bool(os.environ.get('DEBUG'))
 
 if DEBUG:
     logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
@@ -155,7 +155,6 @@ class NektoRoulette():
                             #if track.kind == "video":
                             #    recorder.addTrack(track)
                             if track.kind == "audio":
-                                assert self.voice_client != None
                                 asyncio.create_task(custom_run_track(track, self.voice_client))
 
                                 await websocket.send('42["event",{"type":"stream-received","connectionId":"'+connectionId+'"}]')
