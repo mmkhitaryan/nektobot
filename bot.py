@@ -20,8 +20,8 @@ class MySubClassedSink(Sink):
     def init(self, vc):  # called under listen
         self.vc = vc
 
-        thread = threading.Thread(target=self.send_all_frames_periodically)
-        thread.start()
+        #thread = threading.Thread(target=self.send_all_frames_periodically)
+        #thread.start()
 
     def send_all_frames_periodically(self):
         while not self.finished:
