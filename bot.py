@@ -2,9 +2,11 @@ import uvloop
 import discord
 
 from discord.sinks import Sink
+from discord.opus import DecodeManager
 import nekto_client
 import threading
 import time
+import gc
 
 bot = discord.Bot()
 
@@ -49,6 +51,16 @@ class MySubClassedSink(Sink):
 
 def finished_callback(*args):
     print(args)
+
+def custom_stop(self):
+    while self.decoding:
+        time.sleep(0.1)
+        self.decoder = {}
+        gc.collect()
+        print("Decoder Process Killed")
+        break
+    self._end_thread.set()
+DecodeManager.stop = custom_stop
 
 def custom_recv_decoded_audio(self, data):
     while data.ssrc not in self.ws.ssrc_map:
