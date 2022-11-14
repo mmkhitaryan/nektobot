@@ -46,7 +46,8 @@ class MySubClassedSink(Sink):
             print("packet too big!")
             return
 
-        self.frames_buffer.append((user, data))
+        #self.frames_buffer.append((user, data))
+        nekto_instances[self.vc.channel.id].frame_queue.put_nowait(data)
 
 
 def finished_callback(*args):
