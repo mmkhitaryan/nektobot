@@ -3,6 +3,8 @@ import discord
 
 from discord.sinks import Sink
 import nekto_client
+import threading
+import time
 
 bot = discord.Bot()
 
@@ -13,14 +15,25 @@ nekto_instances = {
 class MySubClassedSink(Sink):
     frames_buffer = []
 
+    def init(self, vc):  # called under listen
+        self.vc = vc
+
+        thread = threading.Thread(target=self.send_all_frames_periodically)
+        thread.start()
+
+    def send_all_frames_periodically(self):
+        while not self.finished:
+            if len(self.frames_buffer)!=0:
+                self.send_all_frames()
+                time.sleep(0.1)
+
     def send_all_frames(self):
         unique_speakers_in_buffer = len(
             set([user_id for user_id,_ in self.frames_buffer])
         )
 
         if unique_speakers_in_buffer==1:
-            for _,raw_frame in self.frames_buffer:
-                nekto_instances[self.vc.channel.id].frame_queue.put_nowait(raw_frame)
+            nekto_instances[self.vc.channel.id].frame_queue.put_nowait(self.frames_buffer)
         else:
             print("multiple detected")
         
@@ -29,15 +42,17 @@ class MySubClassedSink(Sink):
     def write(self, data, user):
         if len(data)!=3840:
             print("packet too big!")
-        if len(self.frames_buffer)<=5: # flush periodically
-            self.frames_buffer.append((user, data))
-            self.send_all_frames()
+            return
+
+        self.frames_buffer.append((user, data))
 
 
 def finished_callback(*args):
     print(args)
 
 def custom_recv_decoded_audio(self, data):
+    while data.ssrc not in self.ws.ssrc_map:
+        time.sleep(0.05)
     self.sink.write(data.decoded_data, self.ws.ssrc_map[data.ssrc]["user_id"])
 
 @bot.command()
