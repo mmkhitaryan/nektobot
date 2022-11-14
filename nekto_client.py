@@ -4,27 +4,76 @@ import json
 import asyncio
 import websockets
 import time
-import random
 import logging
+import sys
 
 from aiortc import RTCPeerConnection, RTCSessionDescription
-from aiortc.contrib.media import MediaPlayer, MediaRelay
 from aiortc.contrib.signaling import object_to_string
-from aiortc.rtcrtpsender import RTCRtpSender
 from aiortc.rtcconfiguration import RTCConfiguration, RTCIceServer
 from aiortc.sdp import candidate_from_sdp
-from aiortc.contrib.media import MediaPlayer, MediaRecorder
+from aiortc.contrib.media import MediaPlayer
+from aiortc.mediastreams import AUDIO_PTIME, MediaStreamError, AudioStreamTrack
+from aiortc.codecs.opus import SAMPLES_PER_FRAME, TIME_BASE, SAMPLE_RATE
 
-logger = logging.getLogger('HumioDemoLogger')
+from av import AudioFrame
+import os
 
-logger.setLevel(logging.DEBUG)
+DEBUG = bool(os.environ.get('DEBUG'))
 
-relay = MediaRelay()
+if DEBUG:
+    logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+
+
+class CustomAudioStreamTrack(AudioStreamTrack):
+    _timestamp = 0
+    
+    async def recv(self):
+        raw_data = await self.frame_queue.get()
+        frame = AudioFrame(format="s16", layout="stereo", samples=SAMPLES_PER_FRAME)
+        
+        p = frame.planes[0]
+
+        if len(raw_data) == 3840:
+            if raw_data != None:
+                p.update(raw_data)
+
+                frame.pts = self._timestamp
+                self._timestamp += SAMPLES_PER_FRAME
+                frame.sample_rate = SAMPLE_RATE
+                frame.time_base = TIME_BASE
+                
+                self.frame_queue.task_done()
+                return frame
+        else:
+            print("PACKET IS TOO LARGE:"+str(len(raw_data)))
+            p.update(bytes(p.buffer_size))
+            frame.pts = self._timestamp
+            self._timestamp += SAMPLES_PER_FRAME
+            frame.sample_rate = SAMPLE_RATE
+            frame.time_base = TIME_BASE
+
+            self.frame_queue.task_done()
+            return frame
+
+async def custom_run_track(track, voice_client):
+    while True:
+        try:
+            frame = await track.recv()
+            for plane in frame.planes:
+                packet = bytes(plane)
+                voice_client.send_audio_packet(packet)
+        except MediaStreamError:
+            return
+
 
 class NektoRoulette():
     def __init__(self, myid, token) -> None:
         self.token=token
         self.myid=myid
+        self.discord_stream = CustomAudioStreamTrack()
+        self.frame_queue = asyncio.Queue()
+        self.discord_stream.frame_queue = self.frame_queue
+        self.voice_client = None
 
     def get_message_id(self, user_id):
         getTime = int(time.time()*1000)
@@ -40,9 +89,8 @@ class NektoRoulette():
         await self.websocket.send(answer_message)
 
     async def run(self):
-        audio, _ = create_local_tracks(
-            "https://zvukogram.com/index.php?r=site/download&id=44560", decode=True
-        )
+        assert self.voice_client != None
+        print("start run")
         async with websockets.connect("wss://audio.nekto.me/websocket/?EIO=3&transport=websocket", ping_timeout=None) as websocket:
             async def pinger():
                 try:
@@ -65,14 +113,13 @@ class NektoRoulette():
             asyncio.create_task(pinger())
 
             await websocket.send('42["event",{"type":"scan-for-peer","peerToPeer":true,"searchCriteria":{"peerSex":"ANY","group":0,"userSex":"ANY"},"token":null}]')
-            recorder = MediaRecorder("test.mp3")
+
             while websocket.open:
                 resp = await websocket.recv()
 
                 if resp[0:2] == "42":
                     resp_json = json.loads(resp[2:])
                     content = resp_json[1]
-                    print(content)
 
                     message_type = content["type"]
                     if message_type=="search.success":
@@ -96,37 +143,29 @@ class NektoRoulette():
                         )
                         @pc.on("connectionstatechange")
                         async def on_connectionstatechange():
-                            print("Connection state is %s" % pc.connectionState)
                             if pc.connectionState == "failed":
                                 await pc.close()
                             if pc.connectionState == "connected":
                                 await websocket.send('42["event",{"type":"peer-connection","connection":true,"connectionId":"'+connectionId+'"}]')
                         
-                        @pc.on("icegatheringstatechange")
-                        async def on_connectionstatechange():
-                            print("Connection state is %s" % pc.signalingState)
-
                         @pc.on("track")
                         async def on_track(track):
-                            print("Track %s received" % track.kind)
                             #if track.kind == "video":
                             #    recorder.addTrack(track)
                             if track.kind == "audio":
-                                recorder.addTrack(track)
-                                await recorder.start()
+                                asyncio.create_task(custom_run_track(track, self.voice_client))
+
                                 await websocket.send('42["event",{"type":"stream-received","connectionId":"'+connectionId+'"}]')
 
                         if initiator:
-                            print(f"Init is_init {initiator}")
                             # generate offer
-                            pc.addTrack(audio)
+                            pc.addTrack(self.discord_stream)
                             offer = await pc.createOffer()
                             sdp_offer = json.dumps({"sdp":offer.sdp, "type": offer.type}) # json to string if json aiortc returns object
                             await pc.setLocalDescription(offer)
                             await websocket.send('42["event",{"type":"peer-mute","connectionId":"'+connectionId+'","muted":false}]')
                             offer_msg = '42["event",'+json.dumps({"type":"offer","connectionId":connectionId,"offer":sdp_offer})+']'
                             await websocket.send(offer_msg)
-                            print("offer"+offer_msg)
 
                         if not initiator:
                             # just wait for offer, and answer to it
@@ -137,7 +176,7 @@ class NektoRoulette():
                             remote_offer = RTCSessionDescription(sdp=json.loads(content["offer"])["sdp"], type=json.loads(content["offer"])["type"])
                             await pc.setRemoteDescription(remote_offer)
 
-                            pc.addTrack(audio)
+                            pc.addTrack(self.discord_stream)
                             
                             localAnswer = await pc.createAnswer()
                             await pc.setLocalDescription(localAnswer)
@@ -146,9 +185,9 @@ class NektoRoulette():
                             sdp_offer = json.dumps({"sdp":localAnswer.sdp, "type": localAnswer.type}) 
 
                             offer_msg = '42["event",'+json.dumps({"type":"answer","connectionId":connectionId,"answer":sdp_offer})+']'
-                            print(offer_msg)
+
                             await websocket.send(offer_msg)
-                            print("offer"+offer_msg)
+
 
                             for transceiver in pc.getTransceivers():
                                 iceGatherer = transceiver.sender.transport.transport.iceGatherer
@@ -194,24 +233,13 @@ class NektoRoulette():
                         await pc.addIceCandidate(candidate)
 
                     if message_type=="peer-disconnect":
-                        await recorder.stop()
                         await pc.close()
                         await websocket.close()
                         await websocket.wait_closed()
+                        print("Left")
                         break
 
-
-def create_local_tracks(play_from, decode):
-    global relay, webcam
-
-    player = MediaPlayer(play_from, decode=decode)
-    return player.audio, player.video
-
-async def hello():
-    first_nekto_client = NektoRoulette('marat', "6a7ef640-2369-4992-b249-173587930ab0")
-
-    
-    await first_nekto_client.run()
-
-if __name__ == '__main__':
-    asyncio.run(hello())
+                    if message_type=="captcha-request":
+                        await websocket.close()
+                        await websocket.wait_closed()
+                        raise Exception("Captcha:"+self.token)
